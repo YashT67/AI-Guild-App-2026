@@ -6,12 +6,13 @@ from PIL import Image
 import numpy as np
 
 class GeoguessrDataset(Dataset):
-    def __init__(self, csv_path, image_dir, transform=None, label_mapping=None):
+    def __init__(self, csv_path, image_dir, transform=None, label_mapping=None, geojson_path=None):
         """
         csv_path: Path to enriched_training_data.csv
         image_dir: Path to the folder containing actual .jpg images
         transform: Albumentations transforms to apply to the images
         label_mapping: Dictionary mapping country_name to integer. If None, it will be built automatically.
+        geojson_path: Optional path to country_boundaries.geojson to guarantee all countries are mapped.
         """
         self.df = pd.read_csv(csv_path)
         
@@ -24,7 +25,21 @@ class GeoguessrDataset(Dataset):
         
         # Build or use provided label mapping
         if label_mapping is None:
-            unique_countries = sorted(self.df['country_name'].unique())
+            if geojson_path is not None and os.path.exists(geojson_path):
+                import json
+                with open(geojson_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                unique_countries = set()
+                for feature in data.get('features', []):
+                    name = feature.get('properties', {}).get('country_name')
+                    if name:
+                        unique_countries.add(name)
+                # Ensure CSV countries are included just in case
+                csv_countries = set(self.df['country_name'].unique())
+                unique_countries = sorted(list(unique_countries.union(csv_countries)))
+            else:
+                unique_countries = sorted(self.df['country_name'].unique())
+                
             self.label_mapping = {country: idx for idx, country in enumerate(unique_countries)}
         else:
             self.label_mapping = label_mapping

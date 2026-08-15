@@ -1,11 +1,14 @@
+import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import timm
+from scripts.losses import cartesian_to_latlon
 
 class GeoguessrModel(nn.Module):
     def __init__(self, num_countries, backbone_name='efficientnet_b0', pretrained=True):
         """
         Initialize the Geoguessr Model.
-        Now containing Part 1 (Backbone) and Part 2 (Country Classifier).
+        Contains Part 1 (Backbone), Part 2 (Country Classifier), and Part 3 (Coordinate Regressor).
         """
         super(GeoguessrModel, self).__init__()
         
@@ -17,24 +20,48 @@ class GeoguessrModel(nn.Module):
         )
         self.num_features = self.backbone.num_features
         
-        # Part 2: Head 1 - Country Classifier (Geography Department)
-        # This linear layer takes the 1280 features and outputs probabilities for every country.
+        # Part 2: Head 1 - Country Classifier
         self.country_head = nn.Linear(self.num_features, num_countries)
         
-        # --- Part 3 (Coordinate Regressor) will go here later ---
+        # Part 3: Head 2 - Coordinate Regressor
+        # Input is concatenation of visual features and country probabilities
+        self.coordinate_head = nn.Sequential(
+            nn.Linear(self.num_features + num_countries, 512),
+            nn.ReLU(),
+            nn.Linear(512, 3)
+        )
         
-    def forward(self, x):
+    def forward(self, x, force_country_probs=None):
         """
         Forward pass for an image batch 'x'.
+        If force_country_probs is provided, it overrides the country_head's prediction.
         """
-        # Get the image summary from the backbone
+        # 1. Get visual features
         features = self.backbone(x)
         
-        # Pass the summary through the Geography Department to get country predictions
+        # 2. Get country logits and probabilities
         country_logits = self.country_head(features)
         
-        # We return a dictionary so it's easy to add Latitude/Longitude later
+        if force_country_probs is not None:
+            country_probs = force_country_probs
+        else:
+            country_probs = F.softmax(country_logits, dim=1)
+        
+        # 3. Predict coordinates
+        # Concatenate features and country_probs along the feature dimension (dim=1)
+        coord_input = torch.cat([features, country_probs], dim=1)
+        raw_xyz = self.coordinate_head(coord_input)
+        
+        # Normalize to force it onto the unit sphere
+        pred_xyz = F.normalize(raw_xyz, p=2, dim=1)
+        
+        # Convert back to lat/lon for evaluation and inference
+        pred_lat, pred_lon = cartesian_to_latlon(pred_xyz)
+        
         return {
             'features': features,
-            'country_logits': country_logits
+            'country_logits': country_logits,
+            'pred_xyz': pred_xyz,
+            'pred_lat': pred_lat,
+            'pred_lon': pred_lon
         }

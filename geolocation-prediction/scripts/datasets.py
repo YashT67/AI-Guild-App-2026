@@ -1,0 +1,90 @@
+import os
+import pandas as pd
+import torch
+from torch.utils.data import Dataset
+from PIL import Image
+import numpy as np
+
+class GeoguessrDataset(Dataset):
+    def __init__(self, csv_path, image_dir, transform=None, label_mapping=None):
+        """
+        csv_path: Path to enriched_training_data.csv
+        image_dir: Path to the folder containing actual .jpg images
+        transform: Albumentations transforms to apply to the images
+        label_mapping: Dictionary mapping country_name to integer. If None, it will be built automatically.
+        """
+        self.df = pd.read_csv(csv_path)
+        
+        # Drop any rows where country_name is missing, just to be safe
+        self.df = self.df.dropna(subset=['country_name'])
+        self.df = self.df.reset_index(drop=True)
+        
+        self.image_dir = image_dir
+        self.transform = transform
+        
+        # Build or use provided label mapping
+        if label_mapping is None:
+            unique_countries = sorted(self.df['country_name'].unique())
+            self.label_mapping = {country: idx for idx, country in enumerate(unique_countries)}
+        else:
+            self.label_mapping = label_mapping
+            
+        # Store inverse mapping for easy inference later
+        self.inverse_label_mapping = {v: k for k, v in self.label_mapping.items()}
+        
+    def __len__(self):
+        return len(self.df)
+    
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        
+        # Image paths are usually just the image_id + '.jpg' or just image_id depending on the CSV
+        image_name = row['image_id']
+        if not str(image_name).endswith('.jpg'):
+            image_name = str(image_name) + '.jpg'
+            
+        img_path = os.path.join(self.image_dir, image_name)
+        
+        # Load image
+        try:
+            image = Image.open(img_path).convert('RGB')
+        except Exception as e:
+            # If an image is corrupt or missing, print error and return a black image
+            print(f"Error loading image {img_path}: {e}")
+            image = Image.new('RGB', (224, 224), (0, 0, 0))
+            
+        image_np = np.array(image)
+        
+        # Apply transforms
+        if self.transform is not None:
+            # Albumentations expects a numpy array
+            try:
+                augmented = self.transform(image=image_np)
+                image_tensor = augmented['image']
+            except TypeError:
+                # Fallback if using standard torchvision transforms
+                image_tensor = self.transform(image)
+        else:
+            # Fallback if no transform is provided (not recommended for training)
+            from torchvision import transforms
+            fallback_transform = transforms.ToTensor()
+            image_tensor = fallback_transform(image)
+            
+        # Get labels
+        country_name = row['country_name']
+        country_label = self.label_mapping[country_name]
+        
+        lat = torch.tensor(row['latitude'], dtype=torch.float32)
+        lon = torch.tensor(row['longitude'], dtype=torch.float32)
+        country_label = torch.tensor(country_label, dtype=torch.long)
+        
+        return {
+            'image': image_tensor,
+            'country_label': country_label,
+            'latitude': lat,
+            'longitude': lon,
+            'image_id': row['image_id']
+        }
+        
+    def get_num_classes(self):
+        return len(self.label_mapping)

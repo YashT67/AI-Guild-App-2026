@@ -1,3 +1,4 @@
 .venv/
 geolocation-prediction/test_images_sampled/
 geolocation-prediction/training_dataset/
+geolocation-prediction/scripts/__pycache__/

@@ -14,10 +14,11 @@ class GeoguessrDataset(Dataset):
         label_mapping: Dictionary mapping country_name to integer. If None, it will be built automatically.
         geojson_path: Optional path to country_boundaries.geojson to guarantee all countries are mapped.
         """
-        self.df = pd.read_csv(csv_path)
+        # keep_default_na=False stops pandas from parsing Namibia's 'NA' country code as a NaN value!
+        self.df = pd.read_csv(csv_path, keep_default_na=False, na_values=[''])
         
-        # Drop any rows where country_name is missing, just to be safe
-        self.df = self.df.dropna(subset=['country_name'])
+        # Drop any rows where ISO_A2 is missing, just to be safe
+        self.df = self.df.dropna(subset=['ISO_A2'])
         self.df = self.df.reset_index(drop=True)
         
         self.image_dir = image_dir
@@ -31,14 +32,14 @@ class GeoguessrDataset(Dataset):
                     data = json.load(f)
                 unique_countries = set()
                 for feature in data.get('features', []):
-                    name = feature.get('properties', {}).get('country_name')
+                    name = feature.get('properties', {}).get('ISO_A2')
                     if name:
                         unique_countries.add(name)
                 # Ensure CSV countries are included just in case
-                csv_countries = set(self.df['country_name'].unique())
+                csv_countries = set(self.df['ISO_A2'].unique())
                 unique_countries = sorted(list(unique_countries.union(csv_countries)))
             else:
-                unique_countries = sorted(self.df['country_name'].unique())
+                unique_countries = sorted(self.df['ISO_A2'].unique())
                 
             self.label_mapping = {country: idx for idx, country in enumerate(unique_countries)}
         else:
@@ -86,7 +87,7 @@ class GeoguessrDataset(Dataset):
             image_tensor = fallback_transform(image)
             
         # Get labels
-        country_name = row['country_name']
+        country_name = row['ISO_A2']
         country_label = self.label_mapping[country_name]
         
         lat = torch.tensor(row['latitude'], dtype=torch.float32)

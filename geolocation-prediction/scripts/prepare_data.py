@@ -26,11 +26,11 @@ def prepare_data():
     # Read the geojson
     gdf_countries = gpd.read_file(geojson_path)
     
-    # Keep ONLY country_name to avoid buggy ISO codes like -99
+    # Keep ONLY ISO_A2
     cols = gdf_countries.columns.tolist()
     columns_to_keep = ['geometry']
-    if 'country_name' in cols:
-        columns_to_keep.append('country_name')
+    if 'ISO_A2' in cols:
+        columns_to_keep.append('ISO_A2')
             
     gdf_countries = gdf_countries[columns_to_keep]
         
@@ -39,7 +39,7 @@ def prepare_data():
     enriched_gdf = gpd.sjoin(gdf_points, gdf_countries, how="left", predicate="intersects")
     
     # Separate matched and unmatched
-    matched_gdf = enriched_gdf[enriched_gdf['country_name'].notnull()]
+    matched_gdf = enriched_gdf[enriched_gdf['ISO_A2'].notnull()]
     unmatched_gdf = gdf_points[~gdf_points.index.isin(matched_gdf.index)]
     
     if len(unmatched_gdf) > 0:
@@ -57,7 +57,7 @@ def prepare_data():
     # Drop the spatial join index and geometry columns for the final CSV
     enriched_df = pd.DataFrame(enriched_gdf.drop(columns=['geometry', 'index_right'], errors='ignore'))
     
-    missing_country = enriched_df['country_name'].isnull().sum()
+    missing_country = enriched_df['ISO_A2'].isnull().sum()
     print(f"Final missing countries: {missing_country}")
     
     print(f"Saving enriched data to {output_path}...")

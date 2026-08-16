@@ -6,19 +6,21 @@ from PIL import Image
 import numpy as np
 
 class GeoguessrDataset(Dataset):
-    def __init__(self, csv_path, image_dir, transform=None, label_mapping=None, geojson_path=None):
+    def __init__(self, csv_path, image_dir, transform=None, label_mapping=None, geojson_path=None, label_col='cluster_id'):
         """
-        csv_path: Path to enriched_training_data.csv
+        csv_path: Path to clustered_training_data.csv
         image_dir: Path to the folder containing actual .jpg images
         transform: Albumentations transforms to apply to the images
-        label_mapping: Dictionary mapping country_name to integer. If None, it will be built automatically.
-        geojson_path: Optional path to country_boundaries.geojson to guarantee all countries are mapped.
+        label_mapping: Dictionary mapping cluster_id to integer. If None, it will be built automatically.
+        geojson_path: (DEPRECATED for KMeans) Optional path to country_boundaries.geojson.
+        label_col: Column containing the target classification labels.
         """
+        self.label_col = label_col
         # keep_default_na=False stops pandas from parsing Namibia's 'NA' country code as a NaN value!
         self.df = pd.read_csv(csv_path, keep_default_na=False, na_values=[''])
         
-        # Drop any rows where ISO_A2 is missing, just to be safe
-        self.df = self.df.dropna(subset=['ISO_A2'])
+        # Drop any rows where label is missing, just to be safe
+        self.df = self.df.dropna(subset=[self.label_col])
         self.df = self.df.reset_index(drop=True)
         
         self.image_dir = image_dir
@@ -36,10 +38,10 @@ class GeoguessrDataset(Dataset):
                     if name:
                         unique_countries.add(name)
                 # Ensure CSV countries are included just in case
-                csv_countries = set(self.df['ISO_A2'].unique())
+                csv_countries = set(self.df[self.label_col].unique())
                 unique_countries = sorted(list(unique_countries.union(csv_countries)))
             else:
-                unique_countries = sorted(self.df['ISO_A2'].unique())
+                unique_countries = sorted(self.df[self.label_col].unique())
                 
             self.label_mapping = {country: idx for idx, country in enumerate(unique_countries)}
         else:
@@ -61,16 +63,25 @@ class GeoguessrDataset(Dataset):
             
         img_path = os.path.join(self.image_dir, image_name)
         
-        # Load image
+        # Load image (Using cv2 is much faster for large datasets if available, but falling back to PIL)
         try:
-            image = Image.open(img_path).convert('RGB')
-        except Exception as e:
-            # If an image is corrupt or missing, print error and return a black image
-            print(f"Error loading image {img_path}: {e}")
-            image = Image.new('RGB', (224, 224), (0, 0, 0))
+            # Attempt to use cv2 for speed
+            import cv2
+            image_np = cv2.imread(img_path)
+            if image_np is None:
+                raise ValueError("Image corrupt or missing")
+            image_np = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(image_np)
+        except Exception:
+            # Fallback to PIL if cv2 is not installed or fails
+            try:
+                image = Image.open(img_path).convert('RGB')
+                image_np = np.array(image)
+            except Exception as e:
+                print(f"Error loading image {img_path}: {e}")
+                image = Image.new('RGB', (224, 224), (0, 0, 0))
+                image_np = np.array(image)
             
-        image_np = np.array(image)
-        
         # Apply transforms
         if self.transform is not None:
             # Albumentations expects a numpy array
@@ -87,7 +98,7 @@ class GeoguessrDataset(Dataset):
             image_tensor = fallback_transform(image)
             
         # Get labels
-        country_name = row['ISO_A2']
+        country_name = row[self.label_col]
         country_label = self.label_mapping[country_name]
         
         lat = torch.tensor(row['latitude'], dtype=torch.float32)

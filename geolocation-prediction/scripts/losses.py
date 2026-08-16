@@ -25,8 +25,8 @@ def cartesian_to_latlon(xyz):
     z = xyz[..., 2]
     
     lon_rad = torch.atan2(y, x)
-    # Clamp z to [-1, 1] to avoid NaNs from floating point inaccuracies
-    lat_rad = torch.asin(torch.clamp(z, -1.0, 1.0))
+    # Clamp z strictly inside (-1, 1) to avoid infinite gradients from asin(1) or asin(-1) which cause NaNs
+    lat_rad = torch.asin(torch.clamp(z, -1.0 + 1e-7, 1.0 - 1e-7))
     
     lat = torch.rad2deg(lat_rad)
     lon = torch.rad2deg(lon_rad)

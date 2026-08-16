@@ -25,7 +25,9 @@ class GeoguessrModel(nn.Module):
         
         # Part 3: Head 2 - Coordinate Regressor
         # Input is concatenation of visual features and country probabilities
+        # Normalizing the concatenated vector ensures the huge visual features don't drown out the tiny softmax probabilities
         self.coordinate_head = nn.Sequential(
+            nn.BatchNorm1d(self.num_features + num_countries),
             nn.Linear(self.num_features + num_countries, 512),
             nn.ReLU(),
             nn.Linear(512, 3)

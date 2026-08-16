@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 import os
 import torch
-from tqdm import tqdm
 
 def latlon_to_cartesian(lat, lon):
     lat_rad = np.deg2rad(lat)
@@ -49,7 +48,7 @@ def process_extra_data():
     centroid_coords = centroids_df[['x', 'y', 'z']].values
     cluster_ids = centroids_df['cluster_id'].values
     
-    print("Mapping 210k coordinates to the 160 K-Means geographic clusters...")
+    print("Mapping 210k coordinates to the 176 K-Means geographic clusters...")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     chunk_size = 10000

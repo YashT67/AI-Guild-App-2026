@@ -32,7 +32,7 @@ def prepare_data():
     print("Converting Lat/Lon to 3D Cartesian coordinates...")
     xyz = latlon_to_cartesian(df['latitude'].values, df['longitude'].values)
     
-    n_clusters = 160
+    n_clusters = 176
     print(f"Running K-Means Geo-Clustering (K={n_clusters})...")
     kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
     df['cluster_id'] = kmeans.fit_predict(xyz)

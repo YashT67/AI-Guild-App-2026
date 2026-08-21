@@ -120,9 +120,8 @@ def main():
     
     # Configuration for hierarchical heads
     hierarchies = [
-        {'k': 4, 'name': 'macro'},
-        {'k': 36, 'name': 'meso'},
-        {'k': 216, 'name': 'micro'}
+        {'k': 16, 'name': 'meso'},
+        {'k': 160, 'name': 'micro'}
     ]
     
     out_dir = os.path.join(data_dir, "hierarchical_clusters")
